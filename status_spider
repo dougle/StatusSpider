@@ -1,0 +1,77 @@
+#!/bin/bash
+
+usage()
+{
+cat << EOF
+usage: $0 options
+
+This script takes a starting webpage and crawls around spawning processes for every link it finds, then reports back any failiars
+
+OPTIONS:
+   -h      Show this message
+   -l      Location of the log file that will be emailed (default is ./spidros.log)
+   -t      Target URL
+   -s      Sub process call, only used to call the child processes for any found links
+   -w      Wget options
+   
+EOF
+}
+
+
+LOG_FILE='./spidros.log'
+TARGET=
+SUB_PROCESS=false
+
+while getopts “hl:t:sw:b:” OPTION
+do
+     case $OPTION in
+         h)
+             usage
+             exit 1
+             ;;
+         l)
+             LOG_FILE=$OPTARG
+             ;;
+         t)
+             TARGET=$OPTARG
+             ;;
+         s)
+             SUB_PROCESS=true
+             ;;
+         w)
+         	 WGET_OPTIONS=$OPTARG
+         	 ;;
+         b)
+         	 BASE_URL=$OPTARG
+         	 ;;
+         ?)
+             usage
+             exit
+             ;;
+     esac
+done
+
+if [[ -z $BASE_URL ]]; then
+	BASE_URL=$TARGET
+fi
+
+# create a wget log file
+WGET_LOG=`mktemp`
+WGET_OUTPUT=`mktemp`
+# get target
+wget -O $WGET_OUTPUT --no-cache -o $WGET_LOG -k -B "$BASE_URL" $WGET_OPTIONS "$TARGET"
+
+LINKS=`pcregrep -N ANY -Mioe '((?<=href=")|(?<=src="))(.+?)(?="( |>|/))' $WGET_OUTPUT | grep -v '$WGET_OUTPUT'`
+
+for LINK in $LINKS
+do
+	LINK=`echo "$LINK" | sed -r 's/^[a-z]{3,5}\:\/\/(.+)$/\1/'`
+	grep "$LINK" ./spidros-history
+	if [[ $? -eq 0 ]];then
+		nohup $0 -t "$LINK" -b $TARGET -l $LOG_FILE -s -w "$WGET_OPTIONS" > /dev/null 2>&1 &
+	fi
+done
+
+echo "$LINKS" >> ./spidros-history
+
+exit 0
