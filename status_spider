@@ -143,7 +143,7 @@ do
 			sleep $DELAY
       
       # spit out where we are off to in the log
-      if [[ 1 -eq $VERBOSE ]];then
+      if [[ 0 -eq $VERBOSE ]];then
         echo "Checking: $LINK" >> "$LOG_FILE"
         COMMAND_EXTRAS="$COMMAND_EXTRAS -v"
       fi
