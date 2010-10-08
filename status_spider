@@ -119,8 +119,8 @@ do
 	# add on the url to any absolute urls
 	LINK=`echo "$LINK" | sed -r "s|^/(.*)$|$BASE_URL/\1|"`
 
-	# convert &amp; and strip off any anchors
-	LINK=`echo "$LINK" | sed -r "s|\&amp;|\&|" | sed -r "s|#.*$||"`
+	# convert some entities and strip off any anchors
+	LINK=`echo "$LINK" | sed -r "s|\&amp;|\&|g" | sed -r "s|%5B|[|g" | sed -r "s|%5D|]|g" | sed -r "s|#.*$||"`
 
 	# check that the link isn't blank after cleaning and that it doesn't reference the current target
 	# which will be a temp file after the -k option in wget
@@ -132,8 +132,7 @@ do
   	fi
   	
 		# if we haven't been there already
-		grep "$LINK" $HIST_FILE
-		if [[ $? -eq 1 ]];then
+		if [[ ! -n `grep -F "$LINK" "$HIST_FILE"` ]];then
 			COMMAND_EXTRAS=""
 			if [[ ! -z $IGNORE_STATUS ]];then
 				COMMAND_EXTRAS=`echo "$IGNORE_STATUS" | sed -r "s@\|?([0-9]+)\|?@-i \1@"`
@@ -155,7 +154,11 @@ do
       else
         nohup $0 -t "$LINK" -b $BASE_URL -r "$TARGET" -l $LOG_FILE -s -w "$WGET_OPTIONS" -m $MAX_THREADS $COMMAND_EXTRAS &
       fi			
-			
+		else
+      # log that we are skipping this link
+      if [[ 0 -eq $VERBOSE ]];then
+        echo "Skipping: $LINK" >> "$LOG_FILE"
+      fi
 		fi
 	fi
 done
