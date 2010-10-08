@@ -27,8 +27,10 @@ SUB_PROCESS=1
 IGNORE_STATUS=""
 DELAY=2
 MAX_THREADS=5
+REFERER_URL=
+VERBOSE=1
 
-while getopts "hd:l:t:sw:b:m:i:q" OPTION
+while getopts "hd:l:t:sw:b:m:i:r:v" OPTION
 do
      case $OPTION in
          h)
@@ -59,6 +61,12 @@ do
          i)
          	 IGNORE_STATUS="$IGNORE_STATUS|$OPTARG"
          	 ;;
+         r)
+           REFERER_URL=$OPTARG
+           ;;
+         v)
+           VERBOSE=0
+           ;;
          ?)
              usage
              exit
@@ -93,34 +101,36 @@ wget -O $WGET_OUTPUT --no-cache -o $WGET_LOG -k -F -B "$BASE_URL" -S $WGET_OPTIO
 # log the result of the get
 RESULT=`cat "$WGET_LOG" | egrep '^(  HTTP/[0-9\.]+ [0-9]+ [^\n]*|Location: [^\n]*)' | sed -r "s|  HTTP/[0-9\.]+ ([0-9]+ [^\n]*)|\1|"`
 if [[ ! "$RESULT" =~ ($IGNORE_STATUS) ]];then
-	echo "$TARGET $RESULT" >> "$LOG_FILE"
+	echo "$TARGET $RESULT     (from: $REFERER_URL)" >> "$LOG_FILE"
 fi
 
-# exit if we are on an external link
+# exit if we are on an external link or if we don't have html
 DOMAIN=`echo "$BASE_URL" | sed -r 's|^[a-z]{3,4}://([^/]+)/?.*|\1|'`
-if [[ ! "$TARGET" =~ "$DOMAIN" ]];then
+if [[ ! "$TARGET" =~ "$DOMAIN" || ! -n `pcregrep -N ANY -Mioe '(<!DOCTYPE .*?>.*?)?<html .*?>' $WGET_OUTPUT` ]];then
 	exit 0;
 fi
 
 WGET_OUTPUT_FILENAME=`basename "$WGET_OUTPUT"`
-LINKS=`pcregrep -N ANY -Mioe '((?<=href=")|(?<=src="))(.+?)(?="( |>|/))' $WGET_OUTPUT | grep -v "$WGET_OUTPUT_FILENAME"`
+# all html source on one line
+LINKS=`tr '\n' ' ' < $WGET_OUTPUT | pcregrep -N ANY -Mioe '((?<=href=\")|(?<=src=\"))(.+?)(?=\"( |>|/))' | grep -vF "$WGET_OUTPUT_FILENAME"`
 
 for LINK in $LINKS
 do
 	# add on the url to any absolute urls
 	LINK=`echo "$LINK" | sed -r "s|^/(.*)$|$BASE_URL/\1|"`
 
-	# default the target to http
-	if [[ ! "$LINK" =~ ^[a-z]{3,5}:\/\/ ]];then
-		LINK="http://$LINK"
-	fi
-
 	# convert &amp; and strip off any anchors
 	LINK=`echo "$LINK" | sed -r "s|\&amp;|\&|" | sed -r "s|#.*$||"`
 
-	# check that the link isn't blank after cleaning and that it does reference the current target
+	# check that the link isn't blank after cleaning and that it doesn't reference the current target
 	# which will be a temp file after the -k option in wget
-	if [[ ! -z "$LINK" ]];then
+	if [[ ! -z "$LINK" && ! "$LINK" =~ ^(mailto:|javascript:) ]];then
+	
+  	# default the target to http
+  	if [[ ! "$LINK" =~ ^[a-z]{3,5}:\/\/ ]];then
+  		LINK="http://$LINK"
+  	fi
+  	
 		# if we haven't been there already
 		grep "$LINK" $HIST_FILE
 		if [[ $? -eq 1 ]];then
@@ -131,14 +141,28 @@ do
 			echo "$LINK" >> $HIST_FILE
 			
 			sleep $DELAY
+      
+      # spit out where we are off to in the log
+      if [[ 1 -eq $VERBOSE ]];then
+        echo "Checking: $LINK" >> "$LOG_FILE"
+        COMMAND_EXTRAS="$COMMAND_EXTRAS -v"
+      fi
+      
+      # if we are maxing out our thread count follow the link as a sub process
+      # else spawn another instance			
+			if [[ -n `ps -ea | grep status_spider | awk "NR>=$MAX_THREADS"` ]];then
+			  $0 -t "$LINK" -b $BASE_URL -r "$TARGET" -l $LOG_FILE -s -w "$WGET_OPTIONS" -m $MAX_THREADS $COMMAND_EXTRAS
+      else
+        nohup $0 -t "$LINK" -b $BASE_URL -r "$TARGET" -l $LOG_FILE -s -w "$WGET_OPTIONS" -m $MAX_THREADS $COMMAND_EXTRAS &
+      fi			
 			
-			while [[ -n `ps -ea | grep status_spider | awk "NR>$MAX_THREADS"` ]];do
-			  sleep 1
-			done
-			
-			nohup $0 -t "$LINK" -b $BASE_URL -l $LOG_FILE -s -w "$WGET_OPTIONS" $COMMAND_EXTRAS > /dev/null &
 		fi
 	fi
 done
+
+# cleanup
+if [[ $SUB_PROCESS -eq 1 ]];then
+	echo "" > $HIST_FILE
+fi
 
 exit 0
