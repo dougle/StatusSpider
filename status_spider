@@ -9,7 +9,9 @@ This script takes a starting webpage and crawls around spawning processes for ev
 
 OPTIONS:
    -h      Show this message
-   -l      Location of the log file that will be emailed (default is ./spidros.log)
+   -d      delay between calls default 2 seconds
+   -i      Ignore this status code e.g. -i 200 (can be used multiple times)
+   -l      Location of the log file that will be emailed (default is ./status_spider.log)
    -t      Target URL
    -s      Sub process call, only used to call the child processes for any found links
    -w      Wget options
@@ -18,18 +20,23 @@ EOF
 }
 
 
-LOG_FILE='./spideros.log'
+LOG_FILE='./status_spider.log'
 HIST_FILE="/tmp/.spider_history"
 TARGET=
 SUB_PROCESS=1
 IGNORE_STATUS=""
+DELAY=2
+MAX_THREADS=5
 
-while getopts "hl:t:sw:b:i:q" OPTION
+while getopts "hd:l:t:sw:b:m:i:q" OPTION
 do
      case $OPTION in
          h)
              usage
              exit 1
+             ;;
+         d)
+             DELAY=$OPTARG
              ;;
          l)
              LOG_FILE=$OPTARG
@@ -46,6 +53,9 @@ do
          b)
          	 BASE_URL=$OPTARG
          	 ;;
+         m)
+           MAX_THREADS=$OPTARG
+           ;;
          i)
          	 IGNORE_STATUS="$IGNORE_STATUS|$OPTARG"
          	 ;;
@@ -105,8 +115,8 @@ do
 		LINK="http://$LINK"
 	fi
 
-	# strip off any anchors
-	LINK=`echo "$LINK" | sed -r "s|#.*$||"`
+	# convert &amp; and strip off any anchors
+	LINK=`echo "$LINK" | sed -r "s|\&amp;|\&|" | sed -r "s|#.*$||"`
 
 	# check that the link isn't blank after cleaning and that it does reference the current target
 	# which will be a temp file after the -k option in wget
@@ -119,6 +129,13 @@ do
 				COMMAND_EXTRAS=`echo "$IGNORE_STATUS" | sed -r "s@\|?([0-9]+)\|?@-i \1@"`
 			fi
 			echo "$LINK" >> $HIST_FILE
+			
+			sleep $DELAY
+			
+			while [[ -n `ps -ea | grep status_spider | awk "NR>$MAX_THREADS"` ]];do
+			  sleep 1
+			done
+			
 			nohup $0 -t "$LINK" -b $BASE_URL -l $LOG_FILE -s -w "$WGET_OPTIONS" $COMMAND_EXTRAS > /dev/null &
 		fi
 	fi
