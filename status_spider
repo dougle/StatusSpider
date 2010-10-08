@@ -18,11 +18,13 @@ EOF
 }
 
 
-LOG_FILE='./spidros.log'
+LOG_FILE='./spideros.log'
+HIST_FILE="/tmp/.spider_history"
 TARGET=
-SUB_PROCESS=false
+SUB_PROCESS=1
+IGNORE_STATUS=""
 
-while getopts “hl:t:sw:b:” OPTION
+while getopts "hl:t:sw:b:i:q" OPTION
 do
      case $OPTION in
          h)
@@ -36,13 +38,16 @@ do
              TARGET=$OPTARG
              ;;
          s)
-             SUB_PROCESS=true
+             SUB_PROCESS=0
              ;;
          w)
          	 WGET_OPTIONS=$OPTARG
          	 ;;
          b)
          	 BASE_URL=$OPTARG
+         	 ;;
+         i)
+         	 IGNORE_STATUS="$IGNORE_STATUS|$OPTARG"
          	 ;;
          ?)
              usage
@@ -51,27 +56,72 @@ do
      esac
 done
 
-if [[ -z $BASE_URL ]]; then
+# tidy up ignore status
+IGNORE_STATUS=`echo "$IGNORE_STATUS" | sed -r "s/^\|//"`
+
+# default the target to http
+if [[ ! "$TARGET" =~ ^[a-z]{3,5}:\/\/ ]];then
+	TARGET="http://$TARGET"
+fi
+
+if [[ -z $BASE_URL ]];then
 	BASE_URL=$TARGET
+fi
+BASE_URL=`echo "$BASE_URL" | sed -r "s|/$||"` # strip trailing slash
+
+if [[ $SUB_PROCESS -eq 1 ]];then
+	echo "" > $HIST_FILE
 fi
 
 # create a wget log file
 WGET_LOG=`mktemp`
 WGET_OUTPUT=`mktemp`
-# get target
-wget -O $WGET_OUTPUT --no-cache -o $WGET_LOG -k -B "$BASE_URL" $WGET_OPTIONS "$TARGET"
 
-LINKS=`pcregrep -N ANY -Mioe '((?<=href=")|(?<=src="))(.+?)(?="( |>|/))' $WGET_OUTPUT | grep -v '$WGET_OUTPUT'`
+# get target
+wget -O $WGET_OUTPUT --no-cache -o $WGET_LOG -k -F -B "$BASE_URL" -S $WGET_OPTIONS "$TARGET"
+
+# log the result of the get
+RESULT=`cat "$WGET_LOG" | egrep '^(  HTTP/[0-9\.]+ [0-9]+ [^\n]*|Location: [^\n]*)' | sed -r "s|  HTTP/[0-9\.]+ ([0-9]+ [^\n]*)|\1|"`
+if [[ ! "$RESULT" =~ ($IGNORE_STATUS) ]];then
+	echo "$TARGET $RESULT" >> "$LOG_FILE"
+fi
+
+# exit if we are on an external link
+DOMAIN=`echo "$BASE_URL" | sed -r 's|^[a-z]{3,4}://([^/]+)/?.*|\1|'`
+if [[ ! "$TARGET" =~ "$DOMAIN" ]];then
+	exit 0;
+fi
+
+WGET_OUTPUT_FILENAME=`basename "$WGET_OUTPUT"`
+LINKS=`pcregrep -N ANY -Mioe '((?<=href=")|(?<=src="))(.+?)(?="( |>|/))' $WGET_OUTPUT | grep -v "$WGET_OUTPUT_FILENAME"`
 
 for LINK in $LINKS
 do
-	LINK=`echo "$LINK" | sed -r 's/^[a-z]{3,5}\:\/\/(.+)$/\1/'`
-	grep "$LINK" ./spidros-history
-	if [[ $? -eq 0 ]];then
-		nohup $0 -t "$LINK" -b $TARGET -l $LOG_FILE -s -w "$WGET_OPTIONS" > /dev/null 2>&1 &
+	# add on the url to any absolute urls
+	LINK=`echo "$LINK" | sed -r "s|^/(.*)$|$BASE_URL/\1|"`
+
+	# default the target to http
+	if [[ ! "$LINK" =~ ^[a-z]{3,5}:\/\/ ]];then
+		LINK="http://$LINK"
+	fi
+
+	# strip off any anchors
+	LINK=`echo "$LINK" | sed -r "s|#.*$||"`
+
+	# check that the link isn't blank after cleaning and that it does reference the current target
+	# which will be a temp file after the -k option in wget
+	if [[ ! -z "$LINK" ]];then
+		# if we haven't been there already
+		grep "$LINK" $HIST_FILE
+		if [[ $? -eq 1 ]];then
+			COMMAND_EXTRAS=""
+			if [[ ! -z $IGNORE_STATUS ]];then
+				COMMAND_EXTRAS=`echo "$IGNORE_STATUS" | sed -r "s@\|?([0-9]+)\|?@-i \1@"`
+			fi
+			echo "$LINK" >> $HIST_FILE
+			nohup $0 -t "$LINK" -b $BASE_URL -l $LOG_FILE -s -w "$WGET_OPTIONS" $COMMAND_EXTRAS > /dev/null &
+		fi
 	fi
 done
-
-echo "$LINKS" >> ./spidros-history
 
 exit 0
