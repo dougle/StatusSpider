@@ -132,8 +132,8 @@ do
 	# add on the url to any absolute urls
 	LINK=`echo "$LINK" | sed -r "s|^/(.*)$|$BASE_URL/\1|"`
 
-	# convert some entities and strip off any anchors
-	LINK=`echo "$LINK" | sed -r "s|\&amp;|\&|g" | sed -r "s|%5B|[|g" | sed -r "s|%5D|]|g" | sed -r "s|#.*$||"`
+	# convert some entities and strip off any anchors or unneeded ampersands
+	LINK=`echo "$LINK" | sed -r "s|\&amp;|\&|g" | sed -r "s|%5B|[|g" | sed -r "s|%5D|]|g" | sed -r "s/#.*$//" | sed -r "s/(&|;)+$//g"`
 
 	# check that the link isn't blank after cleaning and that it doesn't reference the current target
 	# which will be a temp file after the -k option in wget
