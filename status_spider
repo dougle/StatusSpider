@@ -176,9 +176,4 @@ do
 	fi
 done
 
-# cleanup
-if [[ $SUB_PROCESS -eq 1 ]];then
-	echo "" > $HIST_FILE
-fi
-
 exit 0
