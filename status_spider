@@ -100,7 +100,7 @@ wget -O $WGET_OUTPUT --no-cache -o $WGET_LOG -k -F -B "$BASE_URL" -S $WGET_OPTIO
 
 # log the result of the get
 RESULT=`cat "$WGET_LOG" | egrep '^(  HTTP/[0-9\.]+ [0-9]+ [^\n]*|Location: [^\n]*)' | sed -r "s|  HTTP/[0-9\.]+ ([0-9]+ [^\n]*)|\1|"`
-if [[ ! "$RESULT" =~ ($IGNORE_STATUS) ]];then
+if [[ -n $RESULT && ! "$RESULT" =~ ($IGNORE_STATUS) ]];then
 	echo "$TARGET $RESULT     (from: $REFERER_URL)" >> "$LOG_FILE"
 fi
 
@@ -111,8 +111,12 @@ if [[ ! "$TARGET" =~ "$DOMAIN" || ! -n `pcregrep -N ANY -Mioe '(<!DOCTYPE .*?>.*
 fi
 
 WGET_OUTPUT_FILENAME=`basename "$WGET_OUTPUT"`
-# all html source on one line
-LINKS=`tr '\n' ' ' < $WGET_OUTPUT | pcregrep -N ANY -Mioe '((?<=href=\")|(?<=src=\"))(.+?)(?=\"( |>|/))' | grep -vF "$WGET_OUTPUT_FILENAME"`
+# all html source on one line, filter out script blocks then find all urls filtering out the current url and urlencoding spaces
+# perl is needed here for non greedy matching
+LINKS=`tr "\n" ' ' < $WGET_OUTPUT | perl -pe  's#<script( [a-z]+=["'\''][^"]*["'\''])*(/>|>.*?</script>)##ig' | pcregrep -N ANY -Mioe '((?<=href=["'\''])|(?<=src=["'\'']))(.+?)(?=["'\'']( |>|/))' | grep -vF "$WGET_OUTPUT_FILENAME" | sed -r 's| |%20|ig'`
+
+# clear up
+rm $WGET_OUTPUT $WGET_LOG
 
 for LINK in $LINKS
 do
