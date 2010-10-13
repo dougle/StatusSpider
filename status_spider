@@ -29,8 +29,9 @@ DELAY=2
 MAX_THREADS=5
 REFERER_URL=
 VERBOSE=1
+EXCLUDE=
 
-while getopts "hd:l:t:sw:b:m:i:r:v" OPTION
+while getopts "hd:l:t:sw:b:m:i:r:ve:" OPTION
 do
      case $OPTION in
          h)
@@ -67,6 +68,9 @@ do
          v)
            VERBOSE=0
            ;;
+         e)
+           EXCLUDE=$OPTARG
+           ;;
          ?)
              usage
              exit
@@ -94,6 +98,11 @@ fi
 # create a wget log file
 WGET_LOG=`mktemp`
 WGET_OUTPUT=`mktemp`
+
+# exclude via regexp
+if [[ "$TARGET" =~ $EXCLUDE ]];then
+  exit 0;
+fi
 
 # get target
 wget -O $WGET_OUTPUT --no-cache -o $WGET_LOG -k -F -B "$BASE_URL" -S $WGET_OPTIONS "$TARGET"
