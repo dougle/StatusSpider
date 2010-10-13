@@ -163,9 +163,9 @@ do
       # if we are maxing out our thread count follow the link as a sub process
       # else spawn another instance			
 			if [[ -n `ps -ea | grep status_spider | awk "NR>=$MAX_THREADS"` ]];then
-			  $0 -t "$LINK" -b $BASE_URL -r "$TARGET" -l $LOG_FILE -s -w "$WGET_OPTIONS" -m $MAX_THREADS $COMMAND_EXTRAS
+			  $0 -t "$LINK" -b $BASE_URL -r "$TARGET" -l $LOG_FILE -s -w "$WGET_OPTIONS" -m $MAX_THREADS -e "$EXCLUDE" $COMMAND_EXTRAS
       else
-        nohup $0 -t "$LINK" -b $BASE_URL -r "$TARGET" -l $LOG_FILE -s -w "$WGET_OPTIONS" -m $MAX_THREADS $COMMAND_EXTRAS &
+        nohup $0 -t "$LINK" -b $BASE_URL -r "$TARGET" -l $LOG_FILE -s -w "$WGET_OPTIONS" -m $MAX_THREADS -e "$EXCLUDE" $COMMAND_EXTRAS &
       fi			
 		else
       # log that we are skipping this link
